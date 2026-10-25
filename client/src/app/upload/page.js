@@ -125,10 +125,13 @@ export default function UploadPage() {
                   key={match.image_id}
                   className="rounded-md border border-zinc-200 p-4"
                 >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={match.image_url}
+                    alt={match.category}
+                    className="mb-2 h-200 w-full rounded-md object-cover"
+                  />
                   <p className="font-medium">{match.category}</p>
-                  <p className="break-all text-sm text-zinc-600">
-                    {match.image_url}
-                  </p>
                   <p className="mt-1 text-sm">
                     Similarity: {(match.similarity * 100).toFixed(1)}%
                   </p>
