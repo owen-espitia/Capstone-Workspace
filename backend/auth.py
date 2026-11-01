@@ -15,10 +15,11 @@ SESSION_COOKIE = "session"
 ANON_COOKIE = "anon_count"
 
 
-def create_access_token(user_id: int, user_email: str) -> str:
+def create_access_token(user_id: int, user_email: str, user_name: str) -> str:
     payload = {
         "sub": str(user_id),
         "email": user_email,
+        "name": user_name,
         "exp": datetime.now(timezone.utc) + ACCESS_TOKEN_EXPIRE,
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
