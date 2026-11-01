@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  /* config options here */
   experimental: {
     agentFeedback: true,
   },
@@ -14,6 +13,15 @@ const nextConfig = {
         as: "*.css",
       },
     },
+  },
+  // Proxy all /api/* calls to the FastAPI backend so cookies are same-origin.
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: "http://localhost:8000/:path*",
+      },
+    ];
   },
 };
 
