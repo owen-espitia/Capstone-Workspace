@@ -52,7 +52,7 @@ def main():
         for i, old_path in enumerate(old_paths, 1):
             rel = Path(old_path.replace("\\", "/"))
             local_path = LOCAL_IMAGES_ROOT / rel
-            # Full relative path as the key — avoids any filename-collision risk
+            # Full relative path as the key  avoids any filename-collision risk
             # from flattening everything into the bucket root.
             key = str(rel).replace("\\", "/")
 
