@@ -72,3 +72,75 @@ def search_catalog(
             cursor.execute(query, params)
             return list(cursor.fetchall())
 
+class UserExistsError(Exception):
+    pass
+
+
+def create_user_pg(user_name: str, user_email: str, password: str) -> dict[str, Any]:
+    """Create a user; password is hashed by PostgreSQL pgcrypto (bcrypt).
+
+    Raises UserExistsError if the email is already registered.
+    """
+    try:
+        with _connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO users (user_name, user_email, password_hash)
+                    VALUES (%s, %s, crypt(%s, gen_salt('bf')))
+                    RETURNING user_id, user_name, user_email
+                    """,
+                    (user_name, user_email, password),
+                )
+                return cursor.fetchone()
+    except psycopg.errors.UniqueViolation:
+        raise UserExistsError("Email already registered")
+
+
+def verify_user_pg(user_email: str, password: str) -> dict[str, Any] | None:
+    """Return the user record if credentials are valid, otherwise None.
+
+    Comparison is done entirely in PostgreSQL using pgcrypto crypt().
+    """
+    with _connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT user_id, user_name, user_email
+                FROM users
+                WHERE user_email = %s
+                  AND password_hash = crypt(%s, password_hash)
+                """,
+                (user_email, password),
+            )
+            return cursor.fetchone()
+
+
+def create_user(user_name: str, user_email: str, password_hash: str) -> int:
+    """Create a user using a precomputed password hash, returning the user ID."""
+    with _connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO users (user_name, user_email, password_hash)
+                VALUES (%s, %s, %s)
+                RETURNING user_id
+                """,
+                (user_name, user_email, password_hash),
+            )
+            return cursor.fetchone()["user_id"]
+
+
+def get_user_by_email(user_email: str) -> dict[str, Any] | None:
+    """Fetch a user record by email, including its password hash for verification."""
+    with _connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT user_id, user_name, user_email, password_hash
+                FROM users
+                WHERE user_email = %s
+                """,
+                (user_email,),
+            )
+            return cursor.fetchone()
