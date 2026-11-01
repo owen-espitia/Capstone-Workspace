@@ -54,10 +54,7 @@ def _get_current_user(request: Request) -> dict[str, Any] | None:
     return decode_access_token(token)
 
 
-# ---------------------------------------------------------------------------
-# Pydantic models
-# ---------------------------------------------------------------------------
-
+#Pydantic Models
 class RegisterBody(BaseModel):
     user_name: str
     user_email: str
@@ -69,10 +66,7 @@ class LoginBody(BaseModel):
     password: str
 
 
-# ---------------------------------------------------------------------------
-# Auth endpoints
-# ---------------------------------------------------------------------------
-
+#User Auth endpoints
 @app.post("/auth/register")
 def register(body: RegisterBody, response: Response):
     if len(body.password) < 8:
@@ -83,7 +77,7 @@ def register(body: RegisterBody, response: Response):
     except dal.UserExistsError:
         raise HTTPException(status_code=409, detail="An account with that email already exists")
 
-    token = create_access_token(user["user_id"], user["user_email"])
+    token = create_access_token(user["user_id"], user["user_email"], user["user_name"])
     response.set_cookie(SESSION_COOKIE, token, max_age=7 * 24 * 3600, **_COOKIE_OPTS)
     response.delete_cookie(ANON_COOKIE, path="/")
     return {"user": {"id": user["user_id"], "name": user["user_name"], "email": user["user_email"]}}
@@ -95,7 +89,7 @@ def login(body: LoginBody, response: Response):
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    token = create_access_token(user["user_id"], user["user_email"])
+    token = create_access_token(user["user_id"], user["user_email"], user["user_name"])
     response.set_cookie(SESSION_COOKIE, token, max_age=7 * 24 * 3600, **_COOKIE_OPTS)
     response.delete_cookie(ANON_COOKIE, path="/")
     return {"user": {"id": user["user_id"], "name": user["user_name"], "email": user["user_email"]}}
@@ -112,13 +106,10 @@ def me(request: Request):
     user = _get_current_user(request)
     if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return {"user": {"id": user["sub"], "email": user["email"]}}
+    return {"user": {"id": user["sub"], "name": user.get("name"), "email": user["email"]}}
 
 
-# ---------------------------------------------------------------------------
-# Predict endpoint
-# ---------------------------------------------------------------------------
-
+#Inference!!!
 @app.post("/predict")
 def predict(
     request: Request,
