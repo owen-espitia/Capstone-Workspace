@@ -45,12 +45,12 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-6 px-6 py-16">
+    <main className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-8 px-6 py-16">
       <div>
-        <h1 className="text-2xl font-semibold">Create account</h1>
-        <p className="mt-1 text-sm text-zinc-500">
+        <h1 className="text-5xl">Create account</h1>
+        <p className="mt-2 text-sm">
           Already have an account?{" "}
-          <Link href="/login" className="text-cyan-700 underline">
+          <Link href="/login" className="text-brand underline underline-offset-4">
             Sign in
           </Link>
         </p>
@@ -58,7 +58,7 @@ export default function RegisterPage() {
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
-          <label htmlFor="user_name" className="text-sm font-medium">Name</label>
+          <label htmlFor="user_name" className="label">Name</label>
           <input
             id="user_name"
             name="user_name"
@@ -67,12 +67,12 @@ export default function RegisterPage() {
             autoComplete="name"
             value={form.user_name}
             onChange={handleChange}
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-700"
+            className="field"
           />
         </div>
 
         <div className="flex flex-col gap-1">
-          <label htmlFor="user_email" className="text-sm font-medium">Email</label>
+          <label htmlFor="user_email" className="label">Email</label>
           <input
             id="user_email"
             name="user_email"
@@ -81,12 +81,12 @@ export default function RegisterPage() {
             autoComplete="email"
             value={form.user_email}
             onChange={handleChange}
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-700"
+            className="field"
           />
         </div>
 
         <div className="flex flex-col gap-1">
-          <label htmlFor="password" className="text-sm font-medium">Password</label>
+          <label htmlFor="password" className="label">Password</label>
           <input
             id="password"
             name="password"
@@ -96,12 +96,12 @@ export default function RegisterPage() {
             autoComplete="new-password"
             value={form.password}
             onChange={handleChange}
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-700"
+            className="field"
           />
         </div>
 
         <div className="flex flex-col gap-1">
-          <label htmlFor="confirm" className="text-sm font-medium">Confirm password</label>
+          <label htmlFor="confirm" className="label">Confirm password</label>
           <input
             id="confirm"
             name="confirm"
@@ -110,12 +110,12 @@ export default function RegisterPage() {
             autoComplete="new-password"
             value={form.confirm}
             onChange={handleChange}
-            className="rounded-md border border-zinc-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-700"
+            className="field"
           />
         </div>
 
         {error && (
-          <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+          <p role="alert" className="alert-error">
             {error}
           </p>
         )}
@@ -123,7 +123,7 @@ export default function RegisterPage() {
         <button
           type="submit"
           disabled={loading}
-          className="rounded-md bg-zinc-900 px-4 py-3 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="btn btn-primary py-3"
         >
           {loading ? "Creating account…" : "Create account"}
         </button>
