@@ -25,40 +25,29 @@ export default function NavBar() {
   }
 
   return (
-    <nav className="border-b border-zinc-200 bg-white dark:bg-zinc-950 dark:border-zinc-800">
-      <div className="mx-auto flex max-w-4xl items-center gap-6 px-8 py-4">
-        <Link href="/" className="bg-cyan-950 border-2 border-solid rounded-md px-10 text-white">
-          Home
+    <nav className="border-b border-ink bg-paper">
+      <div className="mx-auto flex max-w-5xl items-center gap-8 px-8 py-4">
+        <Link href="/" className="font-display text-2xl font-medium uppercase tracking-wider">
+          SockCheck<span className="text-brand">.ai</span>
         </Link>
-        <Link href="/upload" className="bg-cyan-950 border-2 border-solid rounded-md px-10 text-white">
+        <Link href="/upload" className="eyebrow hover:text-brand">
           Upload Image
         </Link>
 
-        <div className="ml-auto flex items-center gap-4">
+        <div className="ml-auto flex items-center gap-3">
           {user === undefined ? null : user ? (
             <>
-              <span className="text-sm text-zinc-600 dark:text-zinc-400">
-                {user.name || user.email}
-              </span>
-              <button
-                onClick={handleLogout}
-                className="rounded-md border border-zinc-300 px-4 py-1 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              >
+              <span className="eyebrow">{user.name || user.email}</span>
+              <button onClick={handleLogout} className="btn btn-ghost">
                 Log out
               </button>
             </>
           ) : (
             <>
-              <Link
-                href="/login"
-                className="rounded-md border border-zinc-300 px-4 py-1 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              >
+              <Link href="/login" className="btn btn-ghost">
                 Sign in
               </Link>
-              <Link
-                href="/register"
-                className="rounded-md bg-cyan-950 px-4 py-1 text-sm text-white hover:bg-cyan-900"
-              >
+              <Link href="/register" className="btn btn-primary">
                 Register
               </Link>
             </>

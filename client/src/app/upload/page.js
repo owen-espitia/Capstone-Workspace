@@ -78,28 +78,28 @@ export default function UploadPage() {
   return (
     <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-6 px-6 py-12">
       <div>
-        <h1 className="text-3xl font-semibold">Find similar clothing</h1>
-        <p className="mt-2 text-zinc-600">
+        <h1 className="text-5xl">Find similar clothing</h1>
+        <p className="mt-3">
           Choose a clothing image and we&apos;ll find similar catalog items.
         </p>
       </div>
 
       {limitReached ? (
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-6 text-center">
-          <p className="text-lg font-medium text-amber-900">Free request limit reached</p>
-          <p className="mt-1 text-sm text-amber-700">
+        <div className="border border-ink bg-accent p-6 text-center">
+          <p className="font-display text-2xl uppercase tracking-wider">Free request limit reached</p>
+          <p className="mt-1 text-sm">
             You&apos;ve used your 2 free requests. Create a free account to keep going.
           </p>
           <div className="mt-4 flex justify-center gap-3">
             <Link
               href="/register"
-              className="rounded-md bg-zinc-900 px-5 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+              className="btn btn-primary"
             >
               Create account
             </Link>
             <Link
               href="/login"
-              className="rounded-md border border-zinc-300 px-5 py-2 text-sm font-medium hover:bg-zinc-100"
+              className="btn btn-ghost"
             >
               Sign in
             </Link>
@@ -107,7 +107,7 @@ export default function UploadPage() {
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <label htmlFor="image-upload" className="font-medium">
+          <label htmlFor="image-upload" className="label">
             Image
           </label>
           <input
@@ -115,7 +115,7 @@ export default function UploadPage() {
             type="file"
             accept="image/*"
             onChange={handleFileChange}
-            className="block w-full rounded-md border border-zinc-300 p-3"
+            className="field block p-3"
           />
 
           {preview && (
@@ -123,12 +123,12 @@ export default function UploadPage() {
             <img
               src={preview}
               alt="Selected upload preview"
-              className="max-h-80 max-w-full self-start rounded-md object-contain"
+              className="max-h-80 max-w-full self-start border border-ink object-contain"
             />
           )}
 
           {requestsRemaining !== null && (
-            <p className="text-sm text-amber-600">
+            <p className="eyebrow text-brand">
               {requestsRemaining === 0
                 ? "This was your last free request. Sign up to continue."
                 : `${requestsRemaining} free request${requestsRemaining === 1 ? "" : "s"} remaining.`}
@@ -143,7 +143,7 @@ export default function UploadPage() {
           <button
             type="submit"
             disabled={!file || uploading}
-            className="rounded-md bg-zinc-900 px-4 py-3 font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="btn btn-primary py-3"
           >
             {uploading ? "Finding matches..." : "Find matches"}
           </button>
@@ -151,31 +151,31 @@ export default function UploadPage() {
       )}
 
       {error && (
-        <p role="alert" className="rounded-md bg-red-50 p-3 text-red-700">
+        <p role="alert" className="alert-error">
           {error}
         </p>
       )}
 
       {result && (
         <section aria-live="polite" className="flex flex-col gap-3">
-          <h2 className="text-xl font-semibold">Results for {result.category}</h2>
+          <h2 className="text-3xl">Results for {result.category}</h2>
           {result.matches.length === 0 ? (
-            <p className="text-zinc-600">No matching catalog items found.</p>
+            <p>No matching catalog items found.</p>
           ) : (
             <ol className="flex flex-col gap-3">
               {result.matches.map((match) => (
                 <li
                   key={match.image_id}
-                  className="rounded-md border border-zinc-200 p-4"
+                  className="border border-ink p-4"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={match.image_url}
                     alt={match.category}
-                    className="mb-2 h-200 w-full rounded-md object-cover"
+                    className="mb-2 h-200 w-full object-cover"
                   />
-                  <p className="font-medium">{match.category}</p>
-                  <p className="mt-1 text-sm">
+                  <p className="font-display text-2xl uppercase tracking-wider">{match.category}</p>
+                  <p className="eyebrow mt-1">
                     Similarity: {(match.similarity * 100).toFixed(1)}%
                   </p>
                 </li>
