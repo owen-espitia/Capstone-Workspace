@@ -2,17 +2,19 @@ import os
 import shutil
 import tempfile
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 
 from Data_Manipulation_Pipeline import annotate, input_to_vec, student_segmenter
-from backend import dal
+from backend import dal, storage
 from backend.auth import (
     ANON_COOKIE,
     ANON_LIMIT,
@@ -170,12 +172,17 @@ def predict(
 
     timings: dict[str, float] = {"validate": time.perf_counter() - t_request}
     suffix = Path(image.filename).suffix.lower()
+    upload_bytes: bytes | None = None
     with tempfile.TemporaryDirectory(prefix="capstone-predict-") as temp_dir:
         image_path = Path(temp_dir) / f"upload{suffix}"
         with image_path.open("wb") as destination:
             shutil.copyfileobj(image.file, destination)
 
         image_result = input_to_vec.img_to_vector(str(image_path), gdino, sam_predictor, student, timings)
+
+        # Keep the upload for logged-in users so it can show up in their history
+        if user is not None and "error" not in image_result:
+            upload_bytes = image_path.read_bytes()
 
     if "error" in image_result:
         timings["total"] = time.perf_counter() - t_request
@@ -191,6 +198,19 @@ def predict(
     timings["db_search"] = time.perf_counter() - t_search
     timings["total"] = time.perf_counter() - t_request
     response.headers["Server-Timing"] = _log_timings(timings)
+
+    # Logged-in users: store the upload + results so /history never re-runs inference
+    if upload_bytes is not None and matches:
+        saved_name = f"{uuid.uuid4().hex}{suffix}"
+        uploaded = False
+        try:
+            storage.put_user_image(saved_name, upload_bytes, image.content_type)
+            uploaded = True
+            dal.save_inference(int(user["sub"]), saved_name, matches)
+        except Exception as error:  # never fail the prediction because history couldn't be saved
+            print(f"WARNING: could not save inference history: {error}", flush=True)
+            if uploaded:
+                storage.delete_user_image(saved_name)
 
     # Increment and persist the anonymous counter after a successful request
     if user is None:
@@ -208,6 +228,76 @@ def predict(
         "matches": matches,
         "requests_remaining": requests_remaining,
     }
+
+
+#History: a logged-in user's past uploads and their stored top matches
+@app.get("/history")
+def history(
+    request: Request,
+    limit: int = Query(default=24, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    user = _get_current_user(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    items = dal.get_user_history(int(user["sub"]), limit=limit + 1, offset=offset)
+    has_more = len(items) > limit
+    return {
+        "items": [
+            {
+                "inference_id": item["inference_id"],
+                "created_at": item["created_at"].isoformat(),
+                "image_url": f"/api/history/image/{item['user_image_url']}",
+                "matches": [
+                    {
+                        "image_id": m["image_id"],
+                        "image_url": m["image_url"],
+                        "category": m["category"],
+                        "similarity": m["similarity"],
+                    }
+                    for m in item["matches"]
+                ],
+            }
+            for item in items[:limit]
+        ],
+        "has_more": has_more,
+    }
+
+
+@app.delete("/history/{inference_id}")
+def delete_history_item(inference_id: int, request: Request):
+    """Remove one history entry and its uploaded photo (owner only)."""
+    user = _get_current_user(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    filenames = dal.delete_inference(int(user["sub"]), inference_id)
+    if filenames is None:
+        raise HTTPException(status_code=404, detail="History item not found")
+    for filename in filenames:
+        storage.delete_user_image(filename)
+    return {"deleted": inference_id}
+
+
+@app.get("/history/image/{filename}")
+def history_image(filename: str, request: Request):
+    """Serve a user's own uploaded photo (only to its owner)."""
+    user = _get_current_user(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    # filename is a bare uuid name we generated; reject anything path-like
+    if filename != Path(filename).name or not dal.user_owns_image(int(user["sub"]), filename):
+        raise HTTPException(status_code=404, detail="Image not found")
+    stored = storage.get_user_image(filename)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="Image not found")
+    body, content_type = stored
+    return StreamingResponse(
+        body.iter_chunks(64 * 1024),
+        media_type=content_type or "application/octet-stream",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 if __name__ == "__main__":
