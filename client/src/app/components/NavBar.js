@@ -33,6 +33,11 @@ export default function NavBar() {
         <Link href="/upload" className="eyebrow hover:text-brand">
           Upload Image
         </Link>
+        {user && (
+          <Link href="/history" className="eyebrow hover:text-brand">
+            My Wardrobe
+          </Link>
+        )}
 
         <div className="ml-auto flex items-center gap-3">
           {user === undefined ? null : user ? (

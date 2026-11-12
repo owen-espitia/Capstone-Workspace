@@ -72,6 +72,112 @@ def search_catalog(
             cursor.execute(query, params)
             return list(cursor.fetchall())
 
+HISTORY_MATCHES = 3
+
+
+def save_inference(user_id: int, user_image_url: str, matches: list[Mapping[str, Any]]) -> int:
+    """Persist one /predict run for a user: the upload plus its top matches.
+
+    Writes past_inference, user_images and inference_results in a single
+    transaction and returns the new inference_id.
+    """
+    with _connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("INSERT INTO past_inference DEFAULT VALUES RETURNING inference_id")
+            inference_id = cursor.fetchone()["inference_id"]
+            cursor.execute(
+                "INSERT INTO user_images (user_id, user_image_url, inference_id) VALUES (%s, %s, %s)",
+                (user_id, user_image_url, inference_id),
+            )
+            cursor.executemany(
+                """
+                INSERT INTO inference_results (inference_id, image_id, rank, similarity)
+                VALUES (%s, %s, %s, %s)
+                """,
+                [
+                    (inference_id, m["image_id"], rank, float(m["similarity"]))
+                    for rank, m in enumerate(matches[:HISTORY_MATCHES], start=1)
+                ],
+            )
+            return inference_id
+
+
+def get_user_history(user_id: int, limit: int = 24, offset: int = 0) -> list[dict[str, Any]]:
+    """Return a user's past uploads (newest first), each with its stored top matches.
+
+    Reads only the stored inference_results rows; no model inference is run.
+    """
+    with _connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT ui.user_image_id, ui.user_image_url, pi.inference_id, pi.created_at
+                FROM user_images AS ui
+                JOIN past_inference AS pi ON pi.inference_id = ui.inference_id
+                WHERE ui.user_id = %s
+                ORDER BY pi.created_at DESC, ui.user_image_id DESC
+                LIMIT %s OFFSET %s
+                """,
+                (user_id, limit, offset),
+            )
+            items = list(cursor.fetchall())
+            if not items:
+                return []
+
+            cursor.execute(
+                """
+                SELECT r.inference_id, r.rank, r.similarity,
+                       i.image_id, i.image_url, i.category
+                FROM inference_results AS r
+                JOIN images AS i ON i.image_id = r.image_id
+                WHERE r.inference_id = ANY(%s) AND r.rank <= %s
+                ORDER BY r.inference_id, r.rank
+                """,
+                ([item["inference_id"] for item in items], HISTORY_MATCHES),
+            )
+            by_inference: dict[int, list[dict[str, Any]]] = {}
+            for row in cursor.fetchall():
+                by_inference.setdefault(row["inference_id"], []).append(row)
+
+    for item in items:
+        item["matches"] = by_inference.get(item["inference_id"], [])
+    return items
+
+
+def delete_inference(user_id: int, inference_id: int) -> list[str] | None:
+    """Delete one of a user's history entries (upload row, inference and its results).
+
+    Returns the stored filenames of the removed uploads so the caller can delete the
+    files, or None if the inference doesn't exist or belongs to someone else.
+    """
+    with _connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM user_images
+                WHERE inference_id = %s AND user_id = %s
+                RETURNING user_image_url
+                """,
+                (inference_id, user_id),
+            )
+            filenames = [row["user_image_url"] for row in cursor.fetchall()]
+            if not filenames:
+                return None
+            # inference_results rows go with it (ON DELETE CASCADE)
+            cursor.execute("DELETE FROM past_inference WHERE inference_id = %s", (inference_id,))
+            return filenames
+
+
+def user_owns_image(user_id: int, user_image_url: str) -> bool:
+    with _connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT 1 FROM user_images WHERE user_id = %s AND user_image_url = %s",
+                (user_id, user_image_url),
+            )
+            return cursor.fetchone() is not None
+
+
 class UserExistsError(Exception):
     pass
 
