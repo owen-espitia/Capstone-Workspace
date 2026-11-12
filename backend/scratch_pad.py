@@ -16,7 +16,7 @@ import torch
 from PIL import Image as PILImage
 from dotenv import load_dotenv
 
-from Data_Manipulation_Pipeline import annotate, embed_transformers
+from Data_Manipulation_Pipeline import annotate, embed_transformers, student_segmenter
 from groundingdino.util.inference import load_image, predict
 
 load_dotenv(Path(__file__).with_name(".env"))
@@ -26,6 +26,7 @@ GDINO_CKPT = os.getenv("GDINO_CKPT")
 SAM_CKPT = os.getenv("SAM_CKPT")
 SAM_MODEL = os.getenv("SAM_MODEL")
 DEVICE = os.getenv("DEVICE", "cpu")
+STUDENT_CKPT = os.getenv("STUDENT_CKPT")
 
 TEXT_PROMPT = "shirt . jacket . pants"
 BOX_THRESH = 0.3
@@ -37,7 +38,7 @@ TEST_IMAGES = [
 ]
 
 
-def run_once(image_path, gdino, sam_predictor):
+def run_once(image_path, gdino, sam_predictor, student=None):
     print(f"\n=== {image_path} ===")
 
     t0 = time.perf_counter()
@@ -75,6 +76,11 @@ def run_once(image_path, gdino, sam_predictor):
     print(f"  SAM.predict_torch:  {t4 - t3:.3f}s")
     sam_total = t4 - t2
 
+    if student is not None:
+        ts = time.perf_counter()
+        student_masks = student_segmenter.student_masks(student, image_source, boxes_xyxy)
+        print(f"  student masks:      {time.perf_counter() - ts:.3f}s  (vs SAM {sam_total:.3f}s)")
+
     masks = masks.squeeze(1).cpu().numpy()
     crop = annotate.crop_and_fill(image_source=image_source, mask=masks[0], box_xyxy=boxes_xyxy[0])
     t5 = time.perf_counter()
@@ -96,13 +102,19 @@ def main():
     t0 = time.perf_counter()
     gdino = annotate.load_gdino(GDINO_CONFIG, GDINO_CKPT, DEVICE)
     sam_predictor = annotate.load_sam(SAM_CKPT, SAM_MODEL, DEVICE)
+    student = None
+    if STUDENT_CKPT and os.path.exists(STUDENT_CKPT):
+        student = student_segmenter.load_student(STUDENT_CKPT, DEVICE)
     print(f"Model loading (one-time, not part of per-request latency): {time.perf_counter() - t0:.3f}s")
+    print(f"device={DEVICE} torch_threads={torch.get_num_threads()} cpus={os.cpu_count()} student={'yes' if student else 'no'}")
 
     for path in TEST_IMAGES:
         if not os.path.exists(path):
             print(f"Skipping missing test image: {path}")
             continue
-        run_once(path, gdino, sam_predictor)
+        print("\n(warm-up pass, first inference is always slower)")
+        run_once(path, gdino, sam_predictor, student)
+        run_once(path, gdino, sam_predictor, student)
 
 
 if __name__ == "__main__":

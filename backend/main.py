@@ -1,6 +1,7 @@
 import os
 import shutil
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +11,7 @@ from dotenv import load_dotenv
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 
-from Data_Manipulation_Pipeline import annotate, input_to_vec
+from Data_Manipulation_Pipeline import annotate, input_to_vec, student_segmenter
 from backend import dal
 from backend.auth import (
     ANON_COOKIE,
@@ -37,14 +38,32 @@ GDIO_CKPT = os.getenv("GDINO_CKPT")
 SAM_CKPT = os.getenv("SAM_CKPT")
 SAM_MODEL = os.getenv("SAM_MODEL")
 DEVICE = os.getenv("DEVICE")
+STUDENT_CKPT = os.getenv("STUDENT_CKPT")
 gdino = annotate.load_gdino(GDIO_CONFIG, GDIO_CKPT, DEVICE)
-sam_predictor = annotate.load_sam(SAM_CKPT, SAM_MODEL, DEVICE)
+# Segmenter: the student model when STUDENT_CKPT points at a checkpoint, otherwise SAM
+student = None
+sam_predictor = None
+if STUDENT_CKPT and os.path.exists(STUDENT_CKPT):
+    student = student_segmenter.load_student(STUDENT_CKPT, DEVICE)
+    print(f"Segmenter: student model ({STUDENT_CKPT})")
+else:
+    if STUDENT_CKPT:
+        print(f"WARNING: STUDENT_CKPT={STUDENT_CKPT} not found, falling back to SAM")
+    sam_predictor = annotate.load_sam(SAM_CKPT, SAM_MODEL, DEVICE)
+    print("Segmenter: SAM")
 
 _COOKIE_OPTS: dict[str, Any] = {
     "httponly": True,
     "samesite": "lax",
     "path": "/",
 }
+
+
+def _log_timings(timings: dict[str, float]) -> str:
+    """Print one line of per-stage times (ms) for a /predict request; returns it as a Server-Timing header value."""
+    engine = "student" if student is not None else "sam"
+    print(f"[predict:{engine}] " + " | ".join(f"{k} {v * 1000:.0f}ms" for k, v in timings.items()), flush=True)
+    return ", ".join(f"{k};dur={v * 1000:.1f}" for k, v in timings.items())
 
 
 def _get_current_user(request: Request) -> dict[str, Any] | None:
@@ -118,6 +137,7 @@ def predict(
     limit: int = Query(default=5, ge=1, le=100),
 ):
     """Find catalog matches for the garment detected in an uploaded image."""
+    t_request = time.perf_counter()
     user = _get_current_user(request)
 
     # Anonymous rate-limiting
@@ -148,22 +168,29 @@ def predict(
     finally:
         image.file.seek(0)
 
+    timings: dict[str, float] = {"validate": time.perf_counter() - t_request}
     suffix = Path(image.filename).suffix.lower()
     with tempfile.TemporaryDirectory(prefix="capstone-predict-") as temp_dir:
         image_path = Path(temp_dir) / f"upload{suffix}"
         with image_path.open("wb") as destination:
             shutil.copyfileobj(image.file, destination)
 
-        image_result = input_to_vec.img_to_vector(str(image_path), gdino, sam_predictor)
+        image_result = input_to_vec.img_to_vector(str(image_path), gdino, sam_predictor, student, timings)
 
     if "error" in image_result:
+        timings["total"] = time.perf_counter() - t_request
+        _log_timings(timings)
         raise HTTPException(status_code=422, detail=image_result["error"])
 
+    t_search = time.perf_counter()
     matches = dal.search_catalog(
         image_result["embedding"],
         limit=limit,
         category=image_result["category"],
     )
+    timings["db_search"] = time.perf_counter() - t_search
+    timings["total"] = time.perf_counter() - t_request
+    response.headers["Server-Timing"] = _log_timings(timings)
 
     # Increment and persist the anonymous counter after a successful request
     if user is None:
