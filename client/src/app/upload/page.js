@@ -1,11 +1,31 @@
-"use client";
+﻿"use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+
+// "Impact frame" drawn in the margin around the drop zone: a plain blue rectangular ring.
+// Built as a clip-path (evenodd) so the drop zone itself stays uncovered.
+const BURST_OUTER = 4; // px inset of the frame's outer edge
+const BURST_HOLE = 22; // px inset of the cut-out (just outside the label edge)
+
+const IMPACT_CLIP = `polygon(evenodd,
+  ${BURST_OUTER}px ${BURST_OUTER}px,
+  calc(100% - ${BURST_OUTER}px) ${BURST_OUTER}px,
+  calc(100% - ${BURST_OUTER}px) calc(100% - ${BURST_OUTER}px),
+  ${BURST_OUTER}px calc(100% - ${BURST_OUTER}px),
+  ${BURST_OUTER}px ${BURST_OUTER}px,
+  ${BURST_HOLE}px ${BURST_HOLE}px,
+  calc(100% - ${BURST_HOLE}px) ${BURST_HOLE}px,
+  calc(100% - ${BURST_HOLE}px) calc(100% - ${BURST_HOLE}px),
+  ${BURST_HOLE}px calc(100% - ${BURST_HOLE}px),
+  ${BURST_HOLE}px ${BURST_HOLE}px)`;
 
 export default function UploadPage() {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const previewUrlRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+  const [burstKey, setBurstKey] = useState(0); // bump to replay the drop "impact frame"
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -18,8 +38,7 @@ export default function UploadPage() {
     };
   }, []);
 
-  function handleFileChange(event) {
-    const selectedFile = event.target.files?.[0] ?? null;
+  function selectFile(selectedFile) {
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     const previewUrl = selectedFile ? URL.createObjectURL(selectedFile) : null;
     previewUrlRef.current = previewUrl;
@@ -27,6 +46,35 @@ export default function UploadPage() {
     setPreview(previewUrl);
     setResult(null);
     setError(null);
+  }
+
+  function handleFileChange(event) {
+    selectFile(event.target.files?.[0] ?? null);
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    setDragging(false);
+    const dropped = event.dataTransfer.files?.[0];
+    if (!dropped) return;
+    if (!dropped.type.startsWith("image/")) {
+      setError("Please drop an image file.");
+      return;
+    }
+    selectFile(dropped);
+    setBurstKey((key) => key + 1);
+    // Keep the hidden input in sync so it never shows a stale selection
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function handleDragOver(event) {
+    event.preventDefault();
+    setDragging(true);
+  }
+
+  function handleDragLeave(event) {
+    // Ignore leave events fired when moving over the zone's children
+    if (!event.currentTarget.contains(event.relatedTarget)) setDragging(false);
   }
 
   async function handleSubmit(event) {
@@ -107,16 +155,43 @@ export default function UploadPage() {
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <label htmlFor="image-upload" className="label">
-            Image
+          <span className="label">Image</span>
+          {/* Negative margin = padding, so the burst has room without shifting the layout */}
+          <div className="relative -m-6 p-6">
+          {burstKey > 0 && (
+            <span
+              key={burstKey}
+              aria-hidden="true"
+              className="impact-burst animate-impact-burst"
+              style={{ clipPath: IMPACT_CLIP }}
+            />
+          )}
+          <label
+            htmlFor="image-upload"
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            className={`flex cursor-pointer flex-col items-center justify-center gap-2 border border-dashed border-ink p-8 text-center transition-colors focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-brand ${
+              dragging ? "bg-accent" : "bg-wash hover:bg-accent/40"
+            }`}
+          >
+            <span className="font-display text-2xl uppercase tracking-wider">
+              {dragging ? "Drop to select" : "Drag & drop an image here"}
+            </span>
+            <span className="eyebrow">
+              or <span className="underline">browse files</span>
+            </span>
+            {file && <span className="eyebrow text-brand">{file.name}</span>}
+            <input
+              ref={fileInputRef}
+              id="image-upload"
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              className="sr-only"
+            />
           </label>
-          <input
-            id="image-upload"
-            type="file"
-            accept="image/*"
-            onChange={handleFileChange}
-            className="field block p-3"
-          />
+          </div>
 
           {preview && (
             // eslint-disable-next-line @next/next/no-img-element
