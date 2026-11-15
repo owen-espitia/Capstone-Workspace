@@ -26,6 +26,26 @@
   --font-mono: var(--font-jetbrains-mono);
   --radius-md: 0.125rem;
   --radius-lg: 0.25rem;
+
+  /* Keyframes must live in @theme (used via the animate-impact-burst class):
+     Tailwind v4 prunes top-level @keyframes it can't see being used. */
+  --animate-impact-burst: impact-burst 0.6s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+  @keyframes impact-burst {
+    0% {
+      opacity: 1;
+      transform: scale(0.7);
+      background: var(--brand-deep);
+    }
+    30% {
+      opacity: 1;
+      transform: scale(1);
+      background: var(--brand);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1);
+    }
+  }
 }
 
 @layer base {
@@ -111,6 +131,20 @@
     font-size: 0.7rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
+  }
+  /* Comic/anime-style "impact frame": a jagged blue ring that slams in and fades.
+     Shape comes from an inline clip-path (see upload/page.js). */
+  .impact-burst {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+    background: var(--brand);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .impact-burst {
+      display: none;
+    }
   }
   .alert-error {
     border: 1px solid var(--danger);
