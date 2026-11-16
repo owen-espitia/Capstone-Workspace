@@ -132,7 +132,7 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
-  /* Comic/anime-style "impact frame": a jagged blue ring that slams in and fades.
+  /* Comic-style "impact frame": a jagged blue ring that slams in and fades.
      Shape comes from an inline clip-path (see upload/page.js). */
   .impact-burst {
     position: absolute;
