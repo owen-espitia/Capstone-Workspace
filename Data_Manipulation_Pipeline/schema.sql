@@ -1,4 +1,6 @@
 CREATE EXTENSION IF NOT EXISTS vector;
+-- password hashing: dal.py uses crypt() / gen_salt('bf') for register and login
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- One row per garment crop (what you embed) — category lives here, not on Embeddings
 CREATE TABLE images (
@@ -21,7 +23,8 @@ CREATE TABLE users (
     user_id       SERIAL PRIMARY KEY,
     user_name     TEXT NOT NULL,
     user_email    TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL   -- a hash (bcrypt/argon2), never the raw password
+    password_hash TEXT NOT NULL,  -- a hash (bcrypt/argon2), never the raw password
+    upload_count  INTEGER NOT NULL DEFAULT 0   -- lifetime successful uploads; not decremented on history delete
 );
 
 CREATE TABLE past_inference (
@@ -49,3 +52,14 @@ CREATE TABLE inference_results (
 );
 CREATE INDEX idx_inference_results_inference_id ON inference_results (inference_id);
 CREATE INDEX idx_inference_results_image_id ON inference_results (image_id);
+
+-- One editable piece of user feedback per inference (shown and edited on the history page)
+CREATE TABLE inference_feedback (
+    feedback_id   SERIAL PRIMARY KEY,
+    inference_id  INTEGER NOT NULL UNIQUE REFERENCES past_inference (inference_id) ON DELETE CASCADE,
+    user_id       INTEGER NOT NULL REFERENCES users (user_id) ON DELETE CASCADE,
+    feedback_text TEXT NOT NULL CHECK (char_length(feedback_text) BETWEEN 1 AND 2000),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_inference_feedback_user_id ON inference_feedback (user_id);

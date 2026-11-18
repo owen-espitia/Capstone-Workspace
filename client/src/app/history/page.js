@@ -4,12 +4,127 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 const PAGE_SIZE = 24;
+const FEEDBACK_MAX_CHARS = 2000; // matches the backend / DB limit
 
 function formatDate(iso) {
   return new Date(iso).toLocaleString(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
   });
+}
+
+// Text feedback on one past inference: shows the saved note, or a form to write / edit it
+function Feedback({ inferenceId, feedback, onChange, onUnauthorized }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(feedback?.text ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const fieldId = `feedback-${inferenceId}`;
+
+  function startEditing() {
+    setDraft(feedback?.text ?? "");
+    setError(null);
+    setEditing(true);
+  }
+
+  async function send(method, body) {
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/history/${inferenceId}/feedback`, {
+        method,
+        credentials: "include",
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (response.status === 401) {
+        onUnauthorized();
+        return null;
+      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail || "Could not save your feedback.");
+      return data;
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : "Could not save your feedback.");
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    const text = draft.trim();
+    if (!text) {
+      setError("Feedback can't be empty.");
+      return;
+    }
+    const data = await send("PUT", { feedback_text: text });
+    if (data) {
+      onChange(data.feedback);
+      setEditing(false);
+    }
+  }
+
+  async function handleRemove() {
+    if (!window.confirm("Remove your feedback on this photo?")) return;
+    const data = await send("DELETE");
+    if (data) {
+      onChange(null);
+      setEditing(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div className="mt-4 border-t border-hairline pt-3">
+        {feedback ? (
+          <div className="flex flex-col gap-2">
+            <p className="label">Your feedback</p>
+            <p className="whitespace-pre-wrap text-sm">{feedback.text}</p>
+            <div className="flex gap-2">
+              <button onClick={startEditing} className="btn btn-ghost">Edit</button>
+              <button onClick={handleRemove} disabled={saving} className="btn btn-ghost">
+                {saving ? "Removing..." : "Remove"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={startEditing} className="btn btn-ghost">Leave feedback</button>
+        )}
+        {error && <p role="alert" className="alert-error mt-2">{error}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-2 border-t border-hairline pt-3">
+      <label htmlFor={fieldId} className="label">
+        How were these matches?
+      </label>
+      <textarea
+        id={fieldId}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        maxLength={FEEDBACK_MAX_CHARS}
+        rows={3}
+        className="field"
+        autoFocus
+      />
+      <p className="eyebrow self-end">
+        {draft.length}/{FEEDBACK_MAX_CHARS}
+      </p>
+      {error && <p role="alert" className="alert-error">{error}</p>}
+      <div className="flex gap-2">
+        <button type="submit" disabled={saving} className="btn btn-primary">
+          {saving ? "Saving..." : "Save feedback"}
+        </button>
+        <button type="button" onClick={() => setEditing(false)} disabled={saving} className="btn btn-ghost">
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
 }
 
 export default function HistoryPage() {
@@ -19,6 +134,7 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [uploadCount, setUploadCount] = useState(null);
 
   const loadPage = useCallback(
     async (offset) => {
@@ -37,6 +153,7 @@ export default function HistoryPage() {
         if (!response.ok) throw new Error(data.detail || "Could not load history.");
         setItems((prev) => (offset === 0 ? data.items : [...prev, ...data.items]));
         setHasMore(data.has_more);
+        setUploadCount(data.upload_count ?? null);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : "Could not load history.");
       } finally {
@@ -75,6 +192,12 @@ export default function HistoryPage() {
     }
   }
 
+  function handleFeedbackChange(inferenceId, feedback) {
+    setItems((prev) =>
+      prev.map((item) => (item.inference_id === inferenceId ? { ...item, feedback } : item)),
+    );
+  }
+
   return (
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-8 py-12">
       <div>
@@ -82,6 +205,11 @@ export default function HistoryPage() {
         <p className="mt-3">
           Photos you&apos;ve uploaded before, with their closest catalog matches.
         </p>
+        {uploadCount !== null && (
+          <p className="eyebrow mt-2">
+            {uploadCount} {uploadCount === 1 ? "upload" : "uploads"} so far
+          </p>
+        )}
       </div>
 
       {error && (
@@ -141,6 +269,12 @@ export default function HistoryPage() {
                 ))
               )}
             </div>
+            <Feedback
+              inferenceId={item.inference_id}
+              feedback={item.feedback}
+              onChange={(feedback) => handleFeedbackChange(item.inference_id, feedback)}
+              onUnauthorized={() => router.replace("/login")}
+            />
           </li>
         ))}
       </ul>
