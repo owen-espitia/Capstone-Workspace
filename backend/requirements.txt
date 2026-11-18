@@ -1,0 +1,21 @@
+# Runtime dependencies for the API container (versions match the working dev venv).
+# torch and torchvision are installed separately in backend/Dockerfile from the CPU wheel index,
+# and groundingdino-py is installed there too (its setup.py imports torch, so it needs --no-build-isolation).
+
+fastapi==0.146.0
+uvicorn==0.54.0
+python-multipart==0.0.32
+python-dotenv==1.2.4
+python-jose==3.5.0
+pydantic==2.14.1
+psycopg[binary]==3.3.6
+pgvector==0.5.1
+boto3==1.43.110
+pillow==12.3.0
+numpy==2.4.6
+opencv-python==5.0.0.93
+transformers==4.30.2
+tokenizers==0.13.3
+safetensors==0.8.0
+timm==1.0.30
+segment-anything==1.0

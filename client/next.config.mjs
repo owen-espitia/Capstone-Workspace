@@ -19,7 +19,8 @@ const nextConfig = {
     return [
       {
         source: "/api/:path*",
-        destination: "http://localhost:8000/:path*",
+        // BACKEND_URL is set when building the Docker image (the compose service name); local dev keeps localhost
+        destination: `${process.env.BACKEND_URL ?? "http://localhost:8000"}/:path*`,
       },
     ];
   },
