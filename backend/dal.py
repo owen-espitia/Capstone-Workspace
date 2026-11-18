@@ -111,9 +111,11 @@ def get_user_history(user_id: int, limit: int = 24, offset: int = 0) -> list[dic
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT ui.user_image_id, ui.user_image_url, pi.inference_id, pi.created_at
+                SELECT ui.user_image_id, ui.user_image_url, pi.inference_id, pi.created_at,
+                       f.feedback_text, f.updated_at AS feedback_updated_at
                 FROM user_images AS ui
                 JOIN past_inference AS pi ON pi.inference_id = ui.inference_id
+                LEFT JOIN inference_feedback AS f ON f.inference_id = pi.inference_id
                 WHERE ui.user_id = %s
                 ORDER BY pi.created_at DESC, ui.user_image_id DESC
                 LIMIT %s OFFSET %s
@@ -166,6 +168,63 @@ def delete_inference(user_id: int, inference_id: int) -> list[str] | None:
             # inference_results rows go with it (ON DELETE CASCADE)
             cursor.execute("DELETE FROM past_inference WHERE inference_id = %s", (inference_id,))
             return filenames
+
+
+FEEDBACK_MAX_CHARS = 2000  # matches the CHECK constraint on inference_feedback.feedback_text
+
+
+def save_feedback(user_id: int, inference_id: int, feedback_text: str) -> dict[str, Any] | None:
+    """Create or replace the user's feedback on one of their inferences.
+
+    Returns the saved row, or None if the inference doesn't exist or belongs to someone else.
+    """
+    with _connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO inference_feedback (inference_id, user_id, feedback_text)
+                SELECT ui.inference_id, ui.user_id, %s
+                FROM user_images AS ui
+                WHERE ui.inference_id = %s AND ui.user_id = %s
+                LIMIT 1
+                ON CONFLICT (inference_id) DO UPDATE
+                    SET feedback_text = EXCLUDED.feedback_text, updated_at = now()
+                RETURNING inference_id, feedback_text, updated_at
+                """,
+                (feedback_text, inference_id, user_id),
+            )
+            return cursor.fetchone()
+
+
+def delete_feedback(user_id: int, inference_id: int) -> bool:
+    """Remove the user's feedback on one inference; False if there was none to remove."""
+    with _connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM inference_feedback WHERE inference_id = %s AND user_id = %s",
+                (inference_id, user_id),
+            )
+            return cursor.rowcount > 0
+
+
+def increment_upload_count(user_id: int) -> int:
+    """Add one to the user's lifetime upload count and return the new total."""
+    with _connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE users SET upload_count = upload_count + 1 WHERE user_id = %s RETURNING upload_count",
+                (user_id,),
+            )
+            row = cursor.fetchone()
+            return row["upload_count"] if row else 0
+
+
+def get_upload_count(user_id: int) -> int:
+    with _connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT upload_count FROM users WHERE user_id = %s", (user_id,))
+            row = cursor.fetchone()
+            return row["upload_count"] if row else 0
 
 
 def user_owns_image(user_id: int, user_image_url: str) -> bool:

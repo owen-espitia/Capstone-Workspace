@@ -87,6 +87,10 @@ class LoginBody(BaseModel):
     password: str
 
 
+class FeedbackBody(BaseModel):
+    feedback_text: str
+
+
 #User Auth endpoints
 @app.post("/auth/register")
 def register(body: RegisterBody, response: Response):
@@ -199,6 +203,14 @@ def predict(
     timings["total"] = time.perf_counter() - t_request
     response.headers["Server-Timing"] = _log_timings(timings)
 
+    # Count every successful upload, whether or not its history entry gets saved below
+    upload_count = None
+    if user is not None:
+        try:
+            upload_count = dal.increment_upload_count(int(user["sub"]))
+        except Exception as error:  # a counting failure shouldn't fail the prediction either
+            print(f"WARNING: could not update upload count: {error}", flush=True)
+
     # Logged-in users: store the upload + results so /history never re-runs inference
     if upload_bytes is not None and matches:
         saved_name = f"{uuid.uuid4().hex}{suffix}"
@@ -227,6 +239,7 @@ def predict(
         "category": image_result["category"],
         "matches": matches,
         "requests_remaining": requests_remaining,
+        "upload_count": upload_count,
     }
 
 
@@ -241,14 +254,24 @@ def history(
     if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    items = dal.get_user_history(int(user["sub"]), limit=limit + 1, offset=offset)
+    user_id = int(user["sub"])
+    items = dal.get_user_history(user_id, limit=limit + 1, offset=offset)
     has_more = len(items) > limit
     return {
+        "upload_count": dal.get_upload_count(user_id),
         "items": [
             {
                 "inference_id": item["inference_id"],
                 "created_at": item["created_at"].isoformat(),
                 "image_url": f"/api/history/image/{item['user_image_url']}",
+                "feedback": (
+                    {
+                        "text": item["feedback_text"],
+                        "updated_at": item["feedback_updated_at"].isoformat(),
+                    }
+                    if item["feedback_text"] is not None
+                    else None
+                ),
                 "matches": [
                     {
                         "image_id": m["image_id"],
@@ -277,6 +300,38 @@ def delete_history_item(inference_id: int, request: Request):
         raise HTTPException(status_code=404, detail="History item not found")
     for filename in filenames:
         storage.delete_user_image(filename)
+    return {"deleted": inference_id}
+
+
+@app.put("/history/{inference_id}/feedback")
+def save_history_feedback(inference_id: int, body: FeedbackBody, request: Request):
+    """Create or replace the user's text feedback on one of their past inferences."""
+    user = _get_current_user(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    text = body.feedback_text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Feedback can't be empty")
+    if len(text) > dal.FEEDBACK_MAX_CHARS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Feedback must be {dal.FEEDBACK_MAX_CHARS} characters or fewer",
+        )
+
+    saved = dal.save_feedback(int(user["sub"]), inference_id, text)
+    if saved is None:
+        raise HTTPException(status_code=404, detail="History item not found")
+    return {"feedback": {"text": saved["feedback_text"], "updated_at": saved["updated_at"].isoformat()}}
+
+
+@app.delete("/history/{inference_id}/feedback")
+def delete_history_feedback(inference_id: int, request: Request):
+    user = _get_current_user(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not dal.delete_feedback(int(user["sub"]), inference_id):
+        raise HTTPException(status_code=404, detail="Feedback not found")
     return {"deleted": inference_id}
 
 
