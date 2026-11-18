@@ -219,3 +219,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+
+# Docker: model weights are mounted into the backend container, never committed
+models/
+catalog.sql

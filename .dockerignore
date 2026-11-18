@@ -1,0 +1,11 @@
+# Build context for the backend image (docker build -f backend/Dockerfile .)
+.git
+**/__pycache__
+**/*.pyc
+**/.env
+**/.env.*
+client
+models
+backend/scratch_pad.py
+# Local copies of the training data and embeddings; far too large for an image
+Data_Manipulation_Pipeline/multi_modal_images

@@ -1,0 +1,69 @@
+# Full stack: Postgres (pgvector) + FastAPI backend + Next.js client.
+#
+#   1. cp .env.example .env   and fill it in
+#   2. put the model weights in ./models  (see README, "Docker")
+#   3. docker compose up --build        -> http://localhost:3000
+#
+# The client proxies /api/* to the backend over the compose network, so only port 3000 is needed
+# by the browser; 8000 is published for debugging.
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: sockcheck
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Runs once, on first start with an empty volume
+      - ./Data_Manipulation_Pipeline/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports:
+      - "127.0.0.1:5456:5432"   # 5456 so it doesn't clash with a local DB on 5455
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sockcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Special characters in POSTGRES_PASSWORD must be URL-encoded here
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/sockcheck
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:?set AUTH_SECRET_KEY in .env}
+      R2_USER_BUCKET: ${R2_USER_BUCKET:-}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+    volumes:
+      - ./models:/models:ro
+      - hf-cache:/hf-cache
+    ports:
+      - "8000:8000"
+    healthcheck:
+      # Any HTTP answer (401 from /auth/me included) means the app is up
+      test: ["CMD", "python", "-c", "import urllib.request, urllib.error\ntry:\n    urllib.request.urlopen('http://localhost:8000/auth/me')\nexcept urllib.error.HTTPError:\n    pass"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 240s   # model loading (plus the first-run Hugging Face download) is slow
+
+  client:
+    build:
+      context: ./client
+      args:
+        BACKEND_URL: http://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
+  hf-cache:

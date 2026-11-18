@@ -70,7 +70,7 @@ These figures were measured on images of clothing worn by people. They do not de
 
 ## Setup
 
-There is currently no pinned dependency file for the backend. The environment needs, at minimum, FastAPI, Uvicorn, psycopg, pgvector, python-dotenv, python-jose, Pillow, PyTorch, Transformers, boto3, GroundingDINO, and Segment Anything. GroundingDINO and SAM checkpoints must be downloaded separately.
+`backend/requirements.txt` pins the backend's runtime dependencies (used by the Docker image). PyTorch and `groundingdino-py` are not in it: install `torch` and `torchvision` for your platform first, then `pip install --no-build-isolation groundingdino-py==0.4.0` (see `backend/Dockerfile` for the exact sequence). GroundingDINO and SAM checkpoints must be downloaded separately.
 
 ### Database
 
@@ -108,6 +108,34 @@ npm run dev
 ```
 
 The application is then available at `http://localhost:3000`.
+
+### Docker
+
+`docker-compose.yml` runs the whole stack (PostgreSQL with pgvector, the FastAPI backend, and the Next.js client) on CPU.
+
+1. **Secrets.** Copy `.env.example` to `.env` and fill it in (`POSTGRES_PASSWORD`, `AUTH_SECRET_KEY`, and the R2 values). This file is separate from `backend/.env`, which is only for running the backend directly. URL-encode the Postgres password if it has special characters.
+2. **Model weights.** Create a `models/` folder in the repository root (gitignored) containing `groundingdino_swint_ogc.pth` and `best.pt` (the student model). `sam_vit_b_01ec64.pth` is only needed as a fallback when `best.pt` is missing.
+3. **Start it.**
+
+   ```bash
+   docker compose up --build
+   ```
+
+   Then open `http://localhost:3000`. The first start is slow: the backend loads its models and downloads FashionCLIP and bert-base-uncased once from Hugging Face (cached in the `hf-cache` volume). Per-request timings for `/predict` appear in `docker compose logs -f backend`.
+
+The database container starts with the schema from `Data_Manipulation_Pipeline/schema.sql` and no data. To copy the catalog from an existing database (for example a local container on port 5455), dump only the catalog tables and load them into the compose database:
+
+```bash
+// This is the command to write local data to catalog.sql
+
+docker exec <existing-db-container> pg_dump -U <user> -d sockcheck --data-only -t images -t embeddings > catalog.sql
+
+// This is the command that loads the data from catalog.sql
+
+docker compose exec -T db psql -U postgres -d sockcheck < catalog.sql
+```
+
+The client's `/api/*` rewrite uses `BACKEND_URL`, which is set to `http://backend:8000` when the client image is built; `npm run dev` still uses `http://localhost:8000`. The backend image uses CPU-only PyTorch, and neither the weights nor any `.env` file are copied into an image.
 
 ## Project Status
 
