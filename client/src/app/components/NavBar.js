@@ -38,6 +38,11 @@ export default function NavBar() {
             My Wardrobe
           </Link>
         )}
+        {user?.is_admin && (
+          <Link href="/admin" className="eyebrow hover:text-brand">
+            Admin
+          </Link>
+        )}
 
         <div className="ml-auto flex items-center gap-3">
           {user === undefined ? null : user ? (

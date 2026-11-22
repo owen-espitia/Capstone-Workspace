@@ -227,6 +227,46 @@ def get_upload_count(user_id: int) -> int:
             return row["upload_count"] if row else 0
 
 
+def is_admin(user_id: int) -> bool:
+    """Look the flag up in the database each time so a demotion takes effect immediately."""
+    with _connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT is_admin FROM users WHERE user_id = %s", (user_id,))
+            row = cursor.fetchone()
+            return bool(row and row["is_admin"])
+
+
+def list_users_admin() -> list[dict[str, Any]]:
+    """Every registered user with their upload count and all feedback they have left.
+
+    Feedback is per inference, so a user can have several entries (newest first).
+    """
+    with _connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT u.user_id, u.user_name, u.user_email, u.upload_count, u.is_admin,
+                       COALESCE(fb.entries, '[]'::json) AS feedback
+                FROM users AS u
+                LEFT JOIN LATERAL (
+                    SELECT json_agg(
+                               json_build_object(
+                                   'inference_id', f.inference_id,
+                                   'text', f.feedback_text,
+                                   'created_at', f.created_at,
+                                   'updated_at', f.updated_at
+                               )
+                               ORDER BY f.updated_at DESC
+                           ) AS entries
+                    FROM inference_feedback AS f
+                    WHERE f.user_id = u.user_id
+                ) AS fb ON TRUE
+                ORDER BY u.upload_count DESC, u.user_id
+                """
+            )
+            return list(cursor.fetchall())
+
+
 def user_owns_image(user_id: int, user_image_url: str) -> bool:
     with _connect() as connection:
         with connection.cursor() as cursor:

@@ -24,7 +24,8 @@ CREATE TABLE users (
     user_name     TEXT NOT NULL,
     user_email    TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,  -- a hash (bcrypt/argon2), never the raw password
-    upload_count  INTEGER NOT NULL DEFAULT 0   -- lifetime successful uploads; not decremented on history delete
+    upload_count  INTEGER NOT NULL DEFAULT 0,  -- lifetime successful uploads; not decremented on history delete
+    is_admin      BOOLEAN NOT NULL DEFAULT FALSE  -- grants access to /admin; set by hand in SQL, never through the API
 );
 
 CREATE TABLE past_inference (

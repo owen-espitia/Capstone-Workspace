@@ -131,7 +131,42 @@ def me(request: Request):
     user = _get_current_user(request)
     if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    return {"user": {"id": user["sub"], "name": user.get("name"), "email": user["email"]}}
+    return {
+        "user": {
+            "id": user["sub"],
+            "name": user.get("name"),
+            "email": user["email"],
+            "is_admin": dal.is_admin(int(user["sub"])),
+        }
+    }
+
+
+#Admin
+@app.get("/admin/users")
+def admin_users(request: Request):
+    """All registered users with upload counts and feedback (admins only)."""
+    user = _get_current_user(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not dal.is_admin(int(user["sub"])):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    users = dal.list_users_admin()
+    return {
+        "users": [
+            {
+                "id": u["user_id"],
+                "name": u["user_name"],
+                "email": u["user_email"],
+                "upload_count": u["upload_count"],
+                "is_admin": u["is_admin"],
+                "feedback": u["feedback"],
+            }
+            for u in users
+        ],
+        "total_users": len(users),
+        "total_uploads": sum(u["upload_count"] for u in users),
+    }
 
 
 #Inference!!!
