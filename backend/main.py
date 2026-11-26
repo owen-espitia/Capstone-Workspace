@@ -335,7 +335,7 @@ def delete_history_item(inference_id: int, request: Request):
         raise HTTPException(status_code=404, detail="History item not found")
     for filename in filenames:
         storage.delete_user_image(filename)
-    return {"deleted": inference_id}
+    return {"deleted": inference_id, "upload_count": dal.get_upload_count(int(user["sub"]))}
 
 
 @app.put("/history/{inference_id}/feedback")
