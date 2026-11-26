@@ -150,7 +150,8 @@ def delete_inference(user_id: int, inference_id: int) -> list[str] | None:
     """Delete one of a user's history entries (upload row, inference and its results).
 
     Returns the stored filenames of the removed uploads so the caller can delete the
-    files, or None if the inference doesn't exist or belongs to someone else.
+    files, or None if the inference doesn't exist or belongs to someone else. The user's
+    upload count goes down by one in the same transaction.
     """
     with _connect() as connection:
         with connection.cursor() as cursor:
@@ -167,6 +168,10 @@ def delete_inference(user_id: int, inference_id: int) -> list[str] | None:
                 return None
             # inference_results rows go with it (ON DELETE CASCADE)
             cursor.execute("DELETE FROM past_inference WHERE inference_id = %s", (inference_id,))
+            cursor.execute(
+                "UPDATE users SET upload_count = GREATEST(upload_count - 1, 0) WHERE user_id = %s",
+                (user_id,),
+            )
             return filenames
 
 
@@ -208,7 +213,7 @@ def delete_feedback(user_id: int, inference_id: int) -> bool:
 
 
 def increment_upload_count(user_id: int) -> int:
-    """Add one to the user's lifetime upload count and return the new total."""
+    """Add one to the user's upload count and return the new total."""
     with _connect() as connection:
         with connection.cursor() as cursor:
             cursor.execute(

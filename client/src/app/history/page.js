@@ -185,6 +185,10 @@ export default function HistoryPage() {
         throw new Error(data.detail || "Could not delete this item.");
       }
       setItems((prev) => prev.filter((item) => item.inference_id !== inferenceId));
+      if (response.ok) {
+        const data = await response.json().catch(() => ({}));
+        if (typeof data.upload_count === "number") setUploadCount(data.upload_count);
+      }
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : "Could not delete this item.");
     } finally {
