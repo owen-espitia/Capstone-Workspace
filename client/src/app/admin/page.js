@@ -10,6 +10,43 @@ function formatDate(iso) {
   });
 }
 
+function FeedbackEntry({ entry }) {
+  const [showImages, setShowImages] = useState(false);
+  const images = entry.images ?? [];
+
+  return (
+    <li>
+      <div className="flex flex-wrap items-center gap-x-4">
+        <p className="eyebrow">{formatDate(entry.updated_at)}</p>
+        {images.length > 0 && (
+          <button
+            onClick={() => setShowImages((value) => !value)}
+            aria-expanded={showImages}
+            className="eyebrow border border-brand px-2 py-0.5 hover:text-brand"
+          >
+            {showImages ? "Hide" : "Show"} {images.length === 1 ? "photo" : "photos"}
+          </button>
+        )}
+      </div>
+      <p className="whitespace-pre-wrap text-sm">{entry.text}</p>
+      {showImages && (
+        <div className="mt-2 flex flex-wrap gap-3">
+          {images.map((filename) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={filename}
+              src={`/api/admin/feedback-image/${filename}`}
+              alt="Photo the user left feedback on"
+              loading="lazy"
+              className="max-h-64 border border-hairline object-contain"
+            />
+          ))}
+        </div>
+      )}
+    </li>
+  );
+}
+
 function UserRow({ user }) {
   const [open, setOpen] = useState(false);
   const count = user.feedback.length;
@@ -39,10 +76,7 @@ function UserRow({ user }) {
       {open && (
         <ul className="mt-4 flex flex-col gap-3 border-t border-hairline pt-3">
           {user.feedback.map((entry) => (
-            <li key={entry.inference_id}>
-              <p className="eyebrow">{formatDate(entry.updated_at)}</p>
-              <p className="whitespace-pre-wrap text-sm">{entry.text}</p>
-            </li>
+            <FeedbackEntry key={entry.inference_id} entry={entry} />
           ))}
         </ul>
       )}

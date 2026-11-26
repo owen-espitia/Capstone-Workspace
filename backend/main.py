@@ -169,6 +169,27 @@ def admin_users(request: Request):
     }
 
 
+@app.get("/admin/feedback-image/{filename}")
+def admin_feedback_image(filename: str, request: Request):
+    """Serve an uploaded photo that has feedback on it (admins only)."""
+    user = _get_current_user(request)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not dal.is_admin(int(user["sub"])):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if filename != Path(filename).name or not dal.image_has_feedback(filename):
+        raise HTTPException(status_code=404, detail="Image not found")
+    stored = storage.get_user_image(filename)
+    if stored is None:
+        raise HTTPException(status_code=404, detail="Image not found")
+    body, content_type = stored
+    return StreamingResponse(
+        body.iter_chunks(64 * 1024),
+        media_type=content_type or "application/octet-stream",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
 #Inference!!!
 @app.post("/predict")
 def predict(

@@ -253,6 +253,12 @@ def list_users_admin() -> list[dict[str, Any]]:
                                json_build_object(
                                    'inference_id', f.inference_id,
                                    'text', f.feedback_text,
+                                   'images', COALESCE(
+                                       (SELECT json_agg(ui.user_image_url ORDER BY ui.user_image_id)
+                                        FROM user_images AS ui
+                                        WHERE ui.inference_id = f.inference_id),
+                                       '[]'::json
+                                   ),
                                    'created_at', f.created_at,
                                    'updated_at', f.updated_at
                                )
@@ -273,6 +279,22 @@ def user_owns_image(user_id: int, user_image_url: str) -> bool:
             cursor.execute(
                 "SELECT 1 FROM user_images WHERE user_id = %s AND user_image_url = %s",
                 (user_id, user_image_url),
+            )
+            return cursor.fetchone() is not None
+
+
+def image_has_feedback(user_image_url: str) -> bool:
+    """True if the upload belongs to an inference that someone left feedback on."""
+    with _connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT 1
+                FROM user_images AS ui
+                JOIN inference_feedback AS f ON f.inference_id = ui.inference_id
+                WHERE ui.user_image_url = %s
+                """,
+                (user_image_url,),
             )
             return cursor.fetchone() is not None
 
