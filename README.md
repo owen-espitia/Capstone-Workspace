@@ -116,7 +116,7 @@ The application is then available at `http://localhost:3000`.
 `docker-compose.yml` runs the whole stack (PostgreSQL with pgvector, the FastAPI backend, and the Next.js client) on CPU.
 
 1. **Secrets.** Copy `.env.example` to `.env` and fill it in (`POSTGRES_PASSWORD`, `AUTH_SECRET_KEY`, and the R2 values). This file is separate from `backend/.env`, which is only for running the backend directly. URL-encode the Postgres password if it has special characters.
-2. **Model weights.** Create a `models/` folder in the repository root (gitignored) containing `groundingdino_swint_ogc.pth` and `best.pt` (the student model). `sam_vit_b_01ec64.pth` is only needed as a fallback when `best.pt` is missing.
+2. **Model weights.** Create a `models/` folder in the repository root (gitignored) containing `groundingdino_swint_ogc.pth`, `best_segment.pt` (the student segmenter) and `best_obj_detect.pt` (the YOLO detector, tried first; GroundingDINO is the fallback). `sam_vit_b_01ec64.pth` is only needed as a fallback when `best_segment.pt` is missing.
 3. **Start it.**
 
    ```bash

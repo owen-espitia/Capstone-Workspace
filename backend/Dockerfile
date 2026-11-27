@@ -33,7 +33,8 @@ ENV PATH=/opt/venv/bin:$PATH \
     GDINO_CKPT=/models/groundingdino_swint_ogc.pth \
     SAM_CKPT=/models/sam_vit_b_01ec64.pth \
     SAM_MODEL=vit_b \
-    STUDENT_CKPT=/models/best.pt
+    STUDENT_CKPT=/models/best_segment.pt \
+    YOLO_CKPT=/models/best_obj_detect.pt
 
 # The GroundingDINO model config ships inside the groundingdino-py package
 RUN mkdir -p /app/config && python -c "import groundingdino, os, shutil; shutil.copy(os.path.join(os.path.dirname(groundingdino.__file__), 'config', 'GroundingDINO_SwinT_OGC.py'), '/app/config/')" \

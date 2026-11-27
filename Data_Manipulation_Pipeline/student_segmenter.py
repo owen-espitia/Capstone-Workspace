@@ -113,6 +113,16 @@ def generate_instances_student(gdino_model, student: StudentUNet, image_path: st
     if boxes.numel() == 0:
         return []
     boxes_xyxy = annotate.boxes_cxcywh_to_xyxy(boxes, H, W)
+    return instances_from_boxes(student, image_src, boxes_xyxy, phrases, [float(l) for l in logits], timings)
+
+
+def instances_from_boxes(student: StudentUNet, image_src: np.ndarray, boxes_xyxy, categories, scores,
+                         timings: dict | None = None) -> list[dict]:
+    """Student masks + crops for boxes that already exist (from GroundingDINO or the YOLO detector).
+
+    Stores seconds for the segment and crop stages in `timings` if given.
+    """
+    t2 = time.perf_counter()
     masks = student_masks(student, image_src, boxes_xyxy)
     t3 = time.perf_counter()
     if timings is not None:
@@ -126,9 +136,9 @@ def generate_instances_student(gdino_model, student: StudentUNet, image_path: st
         if crop.shape[0] < annotate.MIN_DIM or crop.shape[1] < annotate.MIN_DIM:
             continue
         instances.append({
-            "category": phrases[i],
-            "score": float(logits[i]),
-            "bbox": boxes_xyxy[i].tolist(),
+            "category": categories[i],
+            "score": float(scores[i]),
+            "bbox": [float(v) for v in boxes_xyxy[i]],
             "mask": mask.astype(np.uint8) * 255,
             "crop": crop,
         })

@@ -19,3 +19,4 @@ tokenizers==0.13.3
 safetensors==0.8.0
 timm==1.0.30
 segment-anything==1.0
+ultralytics==8.4.215   # YOLO garment detector (AGPL-3.0); torch is already installed from the CPU index

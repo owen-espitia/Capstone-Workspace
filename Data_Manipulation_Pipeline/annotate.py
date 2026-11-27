@@ -87,8 +87,13 @@ def generate_instances(gdino_model, sam_predictor: SamPredictor, image_path: str
     if boxes.numel() == 0:
         return []
     boxes_xyxy = boxes_cxcywh_to_xyxy(boxes, H, W)
+    return instances_from_boxes_sam(sam_predictor, image_src, boxes_xyxy, phrases, [float(l) for l in logits], device)
+
+
+def instances_from_boxes_sam(sam_predictor: SamPredictor, image_src: np.ndarray, boxes_xyxy, categories, scores, device: str) -> list[dict]:
+    #SAM masks + crops for boxes that already exist (from GroundingDINO or the YOLO detector)
     sam_predictor.set_image(image_src)
-    transformed_boxes = sam_predictor.transform.apply_boxes_torch(torch.as_tensor(boxes_xyxy, dtype= torch.float32, device= device), image_src.shape[:2],)
+    transformed_boxes = sam_predictor.transform.apply_boxes_torch(torch.as_tensor(np.asarray(boxes_xyxy), dtype= torch.float32, device= device), image_src.shape[:2],)
     masks, _, _ = sam_predictor.predict_torch(point_coords= None, point_labels= None, boxes= transformed_boxes, multimask_output= False)
     masks = masks.squeeze(1).cpu().numpy()
     instances = []
@@ -98,9 +103,9 @@ def generate_instances(gdino_model, sam_predictor: SamPredictor, image_path: str
         if crop.shape[0] < MIN_DIM or crop.shape[1] < MIN_DIM:
             continue
         instances.append({
-            "category": phrases[i],
-            "score": float(logits[i]),
-            "bbox": boxes_xyxy[i].tolist(),
+            "category": categories[i],
+            "score": float(scores[i]),
+            "bbox": [float(v) for v in boxes_xyxy[i]],
             "mask": (masks[i].astype(np.uint8) * 255),
             "crop": crop
         })
