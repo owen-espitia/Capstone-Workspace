@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 
-from Data_Manipulation_Pipeline import annotate, input_to_vec, student_segmenter
+from Data_Manipulation_Pipeline import annotate, detector as yolo_detector, input_to_vec, student_segmenter
 from backend import dal, storage
 from backend.auth import (
     ANON_COOKIE,
@@ -41,7 +41,19 @@ SAM_CKPT = os.getenv("SAM_CKPT")
 SAM_MODEL = os.getenv("SAM_MODEL")
 DEVICE = os.getenv("DEVICE")
 STUDENT_CKPT = os.getenv("STUDENT_CKPT")
+YOLO_CKPT = os.getenv("YOLO_CKPT")
 gdino = annotate.load_gdino(GDIO_CONFIG, GDIO_CKPT, DEVICE)
+# Detector: YOLO first (about 0.1 s), GroundingDINO (3.5-5.8 s) only when YOLO has no confident, plausibly sized box.
+# Without YOLO_CKPT every request uses GroundingDINO, as before.
+detector = None
+if YOLO_CKPT and os.path.exists(YOLO_CKPT):
+    detector = yolo_detector.load_detector(YOLO_CKPT, DEVICE)
+    print(f"Detector: YOLO ({YOLO_CKPT}), GroundingDINO fallback below conf {yolo_detector.MIN_CONF} "
+          f"or box over {yolo_detector.MAX_BOX_FRAC:.0%} of the image")
+else:
+    if YOLO_CKPT:
+        print(f"WARNING: YOLO_CKPT={YOLO_CKPT} not found, using GroundingDINO only")
+    print("Detector: GroundingDINO")
 # Segmenter: the student model when STUDENT_CKPT points at a checkpoint, otherwise SAM
 student = None
 sam_predictor = None
@@ -61,10 +73,13 @@ _COOKIE_OPTS: dict[str, Any] = {
 }
 
 
-def _log_timings(timings: dict[str, float]) -> str:
-    """Print one line of per-stage times (ms) for a /predict request; returns it as a Server-Timing header value."""
+def _log_timings(timings: dict[str, float], note: str = "") -> str:
+    """Print one line of per-stage times (ms) for a /predict request; returns it as a Server-Timing header value.
+
+    `note` says which detector produced the box, e.g. "yolo" or "groundingdino (fallback: full_image_box)".
+    """
     engine = "student" if student is not None else "sam"
-    print(f"[predict:{engine}] " + " | ".join(f"{k} {v * 1000:.0f}ms" for k, v in timings.items()), flush=True)
+    print(f"[predict:{engine}] " + (f"{note} | " if note else "") + " | ".join(f"{k} {v * 1000:.0f}ms" for k, v in timings.items()), flush=True)
     return ", ".join(f"{k};dur={v * 1000:.1f}" for k, v in timings.items())
 
 
@@ -238,7 +253,7 @@ def predict(
         with image_path.open("wb") as destination:
             shutil.copyfileobj(image.file, destination)
 
-        image_result = input_to_vec.img_to_vector(str(image_path), gdino, sam_predictor, student, timings)
+        image_result = input_to_vec.img_to_vector(str(image_path), gdino, sam_predictor, student, timings, detector)
 
         # Keep the upload for logged-in users so it can show up in their history
         if user is not None and "error" not in image_result:
@@ -246,8 +261,14 @@ def predict(
 
     if "error" in image_result:
         timings["total"] = time.perf_counter() - t_request
-        _log_timings(timings)
+        _log_timings(timings, "no detection (YOLO and GroundingDINO)" if detector is not None else "")
         raise HTTPException(status_code=422, detail=image_result["error"])
+
+    detector_note = ""
+    if detector is not None:
+        detector_note = image_result["detector"]
+        if image_result["fallback_reason"]:
+            detector_note += f" (fallback: {image_result['fallback_reason']})"
 
     t_search = time.perf_counter()
     matches = dal.search_catalog(
@@ -257,7 +278,7 @@ def predict(
     )
     timings["db_search"] = time.perf_counter() - t_search
     timings["total"] = time.perf_counter() - t_request
-    response.headers["Server-Timing"] = _log_timings(timings)
+    response.headers["Server-Timing"] = _log_timings(timings, detector_note)
 
     # Count every successful upload, whether or not its history entry gets saved below
     upload_count = None
